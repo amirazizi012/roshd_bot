@@ -68,7 +68,7 @@ def make_app(cfg, repo) -> web.Application:
 
     @web.middleware
     async def guard(request, handler):
-        if request.path in ("/login", "/logo.png") or valid(request.cookies.get(COOKIE)):
+        if request.path in ("/login", "/logo.png", "/healthz") or valid(request.cookies.get(COOKIE)):
             return await handler(request)
         raise web.HTTPFound("/login")
 
@@ -83,7 +83,9 @@ def make_app(cfg, repo) -> web.Application:
         return await login_form(request)
 
     async def login_post(request):
-        ip = request.remote or "?"
+        # پشت پروکسی لیارا، request.remote آی‌پی خود پروکسی است؛ آخرین مقدار X-Forwarded-For را (که پروکسی اضافه کرده) استفاده می‌کنیم
+        xff = request.headers.get("X-Forwarded-For", "")
+        ip = (xff.split(",")[-1].strip() if xff else "") or request.remote or "?"
         n, until = fails.get(ip, (0, 0))
         if until > time.time():
             return await login_form(request, "تلاش‌های ناموفق زیاد بود؛ چند دقیقه بعد دوباره امتحان کن.")
@@ -92,7 +94,8 @@ def make_app(cfg, repo) -> web.Application:
             fails.pop(ip, None)
             resp = web.HTTPFound("/")
             resp.set_cookie(COOKIE, sign(int(time.time()) + SESSION_SECONDS), max_age=SESSION_SECONDS,
-                            httponly=True, samesite="Lax")
+                            httponly=True, samesite="Lax",
+                            secure=request.secure or request.headers.get("X-Forwarded-Proto") == "https")
             raise resp
         n += 1
         fails[ip] = (n, time.time() + 300 if n >= 5 else 0)
@@ -102,6 +105,9 @@ def make_app(cfg, repo) -> web.Application:
         resp = web.HTTPFound("/login")
         resp.del_cookie(COOKIE)
         raise resp
+
+    async def healthz(request):
+        return web.Response(text="ok")
 
     async def logo(request):
         return web.FileResponse(LOGO)
@@ -210,7 +216,7 @@ def make_app(cfg, repo) -> web.Application:
     app = web.Application(middlewares=[guard])
     app.add_routes([
         web.get("/login", login_get), web.post("/login", login_post), web.get("/logout", logout),
-        web.get("/logo.png", logo), web.get("/", dashboard), web.get("/assignment/{id:\\d+}", assignment),
+        web.get("/logo.png", logo), web.get("/healthz", healthz), web.get("/", dashboard), web.get("/assignment/{id:\\d+}", assignment),
         web.get("/student/{id:\\d+}", student), web.get("/file/{id:\\d+}", file), web.get("/export.xlsx", export),
     ])
     return app

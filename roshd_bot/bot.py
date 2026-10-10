@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from .bale import Bale, BaleError, inline, reply_kb
 from .config import Config
 from .db import Repo
+from .backup import make_backup
 from .export import LOGO, build_excel, build_zip
 from .rules import EXCUSED, LATE, MISSING, ON_TIME, OPEN, STREAK_LEN, STREAK_POINTS
 from .timeutil import (en, fa, fmt_dt, fmt_duration, from_db, jalali_str, parse_deadline, to_db, utcnow)
@@ -41,7 +42,7 @@ HELP_ADMIN = (
     "تمدید برای همه، ویرایش، دانلود zip پاسخ‌ها و بایگانی.\n"
     "• «📢 پیام همگانی»: پیام به همه یا گروه‌های انتخابی.  «📊 خروجی اکسل»: آمار کامل تکالیف.\n"
     "• /asstudent: دیدن ربات از نگاه دانش‌آموز (برای تست)، با /start برمی‌گردی.\n"
-    "• /myid: شناسهٔ عددی بله‌ات. /cancel: انصراف از مرحلهٔ جاری."
+    "• /backup: بکاپ دیتابیس (هر روز هم خودکار می‌آید). /myid: شناسهٔ عددی بله‌ات. /cancel: انصراف از مرحلهٔ جاری."
 )
 
 
@@ -159,6 +160,9 @@ class App:
             await self.say(chat, "انصراف داده شد ✅", self.menu(chat))
         elif cmd == "/help":
             await self.say(chat, self.help_text(chat), self.menu(chat))
+        elif cmd == "/backup" and self.is_admin(chat):
+            path = make_backup(self.cfg, self.repo, utcnow())
+            await self.bale.send_file(chat, path, "document", "🗄 بکاپ دیتابیس")
         elif cmd == "/asstudent" and chat in self.cfg.admin_ids:
             self.student_mode.add(chat)
             self.repo.clear_session(chat)

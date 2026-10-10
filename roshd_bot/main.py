@@ -4,22 +4,44 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import socket
 import sys
 
 from .bale import Bale, BaleError
 from .bot import App
 from .config import load_config
+from .backup import make_backup
 from .db import Repo
 from .panel import start_panel
+from .timeutil import utcnow
 
 log = logging.getLogger("roshd")
+
+
+async def backup_loop(cfg, bale, repo):
+    """هر ۲۴ ساعت یک بکاپ می‌سازد و برای همهٔ مدیران در بله می‌فرستد."""
+    await asyncio.sleep(120)
+    while True:
+        try:
+            path = make_backup(cfg, repo, utcnow())
+            for admin in cfg.admin_ids:
+                try:
+                    await bale.send_file(admin, path, "document", "🗄 بکاپ خودکار دیتابیس تکالیف")
+                except BaleError as e:
+                    log.warning("backup send failed: %s", e)
+        except Exception:  # noqa: BLE001
+            log.exception("backup failed")
+        await asyncio.sleep(24 * 3600)
 
 
 async def run(check_only: bool = False) -> None:
     cfg = load_config()
     if not cfg.token:
         sys.exit("BALE_TOKEN در فایل .env تنظیم نشده است.")
+    if os.environ.get("DIAG_ON_START") == "1":      # خروجی عیب‌یابی اتصال داخل لاگ‌های سرور چاپ می‌شود
+        from .diag import run as diag_run
+        await diag_run()
     bale = Bale(cfg.token, cfg.api_base, proxy=cfg.bale_proxy, trust_env=cfg.use_system_proxy)
     while True:
         try:
@@ -53,6 +75,7 @@ async def run(check_only: bool = False) -> None:
                         "ربات بدون پنل ادامه می‌دهد.", e, cfg.panel_port)
     else:
         log.info("PANEL_PASSWORD تنظیم نشده؛ پنل وب غیرفعال است.")
+    asyncio.create_task(backup_loop(cfg, bale, repo))
     offset = int(repo.meta_get("offset") or 0) or None
     while True:
         try:

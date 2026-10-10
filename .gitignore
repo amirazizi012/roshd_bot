@@ -1,0 +1,12 @@
+# هرگز در Git نرود: رمزها و داده‌ها
+.env
+.env.*
+!.env.example
+!.env.northflank.example
+.venv/
+data/
+backups/
+__pycache__/
+*.pyc
+*.db
+*.xlsx

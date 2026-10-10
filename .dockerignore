@@ -1,0 +1,8 @@
+.venv
+data
+backups
+.env
+__pycache__
+*.pyc
+tests
+docs

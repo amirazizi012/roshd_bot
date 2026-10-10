@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import sqlite3
 from datetime import timedelta
@@ -55,7 +56,7 @@ class Repo:
     def __init__(self, path: str):
         self.c = sqlite3.connect(path)
         self.c.row_factory = sqlite3.Row
-        self.c.execute("PRAGMA journal_mode=WAL")
+        self.c.execute(f"PRAGMA journal_mode={os.environ.get('SQLITE_JOURNAL', 'WAL') if os.environ.get('SQLITE_JOURNAL', 'WAL') in ('WAL', 'DELETE') else 'WAL'}")
         self.c.executescript(SCHEMA)
         try:  # مهاجرت برای دیتابیس‌های قدیمی
             self.c.execute("ALTER TABLE submissions ADD COLUMN via_resubmit INTEGER NOT NULL DEFAULT 0")

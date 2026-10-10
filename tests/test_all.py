@@ -265,6 +265,34 @@ class Phase3(E2E):
             r = await c.post("/login", data={"password": "pw-123456"}); self.assertIn("تلاش‌های ناموفق", await r.text())
 
 
+class Phase4(Phase3):
+    async def test_backup_and_healthz(self):
+        import sqlite3, zipfile
+        from dataclasses import replace
+        from aiohttp.test_utils import TestClient, TestServer
+        from roshd_bot.backup import make_backup
+        from roshd_bot.panel import make_app
+        sid, aid, dl = await self.seed()
+        z = make_backup(self.cfg, self.repo, utcnow())
+        with zipfile.ZipFile(z) as zf:
+            zf.extract("roshd.db", self.cfg.data_dir)
+        n = sqlite3.connect(self.cfg.data_dir / "roshd.db").execute("SELECT COUNT(*) FROM students").fetchone()[0]
+        self.assertEqual(n, 1)
+        await self.msg(1, "/backup")
+        self.assertTrue(any("[upload document roshd-backup-" in x[1] for x in self.bale.sent if x[0] == 1))
+        cfg = replace(self.cfg, panel_password="pw-123456")
+        async with TestClient(TestServer(make_app(cfg, self.repo))) as c:
+            r = await c.get("/healthz", allow_redirects=False); self.assertEqual((r.status, await r.text()), (200, "ok"))
+            # قفل بر اساس X-Forwarded-For: یک مهاجم، مدیر دیگر را قفل نمی‌کند
+            for _ in range(5):
+                await c.post("/login", data={"password": "x"}, headers={"X-Forwarded-For": "9.9.9.9"})
+            r = await c.post("/login", data={"password": "pw-123456"}, headers={"X-Forwarded-For": "9.9.9.9"})
+            self.assertIn("تلاش‌های ناموفق", await r.text())
+            r = await c.post("/login", data={"password": "pw-123456"}, headers={"X-Forwarded-For": "1.2.3.4", "X-Forwarded-Proto": "https"}, allow_redirects=False)
+            self.assertEqual(r.status, 302)
+            self.assertIn("Secure", r.headers["Set-Cookie"])
+
+
 class Phase2(E2E):
     async def setup_one(self, deadline_delta=timedelta(hours=1)):
         gid = self.repo.add_group("g")
